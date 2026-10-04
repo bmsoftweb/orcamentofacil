@@ -93,6 +93,8 @@ export async function apagar(ref: string | null | undefined) {
   try {
     if (/^https:\/\//i.test(ref)) {
       if (URL_BLOB.test(ref)) await del(ref);
+    } else if (usaBlob() && !ref.startsWith('/')) {
+      await del((await head(ref)).url);
     } else {
       await fs.promises.unlink(noDisco(ref.startsWith('/imagens/') ? `imagens/${path.basename(ref)}` : ref));
     }

@@ -63,11 +63,17 @@ async function conferirEditavel(id: string) {
 }
 
 /** Antes de excluir pelo CRUD genérico */
-export async function antesDeExcluir(recurso: string, id: string) {
+/** Devolve os arquivos do armazenamento a apagar depois que a exclusão der certo */
+export async function antesDeExcluir(recurso: string, id: string): Promise<string[]> {
+  if (recurso === 'importacoes_dae') {
+    const [[i]] = await pool.query<any[]>('SELECT arquivo_path FROM importacoes_dae WHERE id = ?', [id]);
+    return i ? [i.arquivo_path, `malhas/${Number(id)}.json`] : [];
+  }
   if (recurso === 'orcamentos') {
     const [[o]] = await pool.query<any[]>('SELECT status FROM orcamentos WHERE id = ?', [id]);
     if (o && !['RASCUNHO', 'CANCELADO'].includes(o.status)) throw Object.assign(new Error('Só orçamentos em rascunho ou cancelados podem ser excluídos.'), { status: 409 });
   }
+  return [];
 }
 
 /** Depois de incluir pelo CRUD genérico */

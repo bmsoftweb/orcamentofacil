@@ -1,5 +1,10 @@
 # Histórico de versões
 
+## 0.0.5 — 04/10/2026
+
+- Excluir uma importação apaga também o `.dae` e a malha do armazenamento (antes ficavam órfãos no Blob).
+- Aviso de arquivo já importado não apaga mais o `.dae` da importação existente quando o mesmo endereço é reenviado.
+
 ## 0.0.4 — 04/10/2026
 
 Armazenamento na Vercel Blob (store "orcamentofacil"), no padrão do crmWeb:

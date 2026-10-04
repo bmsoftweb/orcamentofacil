@@ -4,7 +4,7 @@ import { pool, comUsuario } from './db.js';
 import { FieldDef, ResourceDef, RESOURCES, getResource, writableFields, columnNames, colunaSql } from './schema.js';
 import { antesDeGravar, antesDeExcluir, aposIncluir } from './regras.js';
 import { documentoValido } from '../src/lib/documento.js';
-import { enderecoValido } from './armazenamento.js';
+import { apagar, enderecoValido } from './armazenamento.js';
 
 /** Metadados enviados ao navegador: o SQL próprio (combos, colunas calculadas) não sai do servidor */
 const RESOURCES_PUBLICOS = RESOURCES.map(({ optionsSql, scopeSql, ...r }) => ({ ...r, fields: r.fields.map(({ sql, ...f }) => f) }));
@@ -350,12 +350,13 @@ export function createCrudRouter() {
     try {
       resource = resolveResource(req);
       if (!resource.canDelete) return res.status(403).json({ error: `Não é permitido excluir registros em ${resource.label}.` });
-      await antesDeExcluir(resource.name, req.params.id);
+      const arquivos = await antesDeExcluir(resource.name, req.params.id);
       const [result] = await pool.query<any>(
         `DELETE t FROM ${resource.table} t WHERE ${escopo(resource)} AND t.${pkCol(resource)} = ?`,
         [req.params.id],
       );
       if (result.affectedRows === 0) return res.status(404).json({ error: `${resource.labelSingular} não encontrado.` });
+      for (const a of arquivos) await apagar(a);
       res.json({ success: true });
     } catch (err: any) {
       res.status(err.status || 400).json({ error: friendlyDbError(err, resource?.labelSingular) });

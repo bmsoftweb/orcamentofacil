@@ -106,11 +106,13 @@ export function createImportacoesRouter() {
       // Mesmo arquivo já importado (no mesmo orçamento, ou também sem orçamento): avisa e só reimporta se pedirem
       if (!req.body?.forcar) {
         const [dup] = await pool.query<any[]>(
-          'SELECT id, arquivo_nome, created_at FROM importacoes_dae WHERE arquivo_hash = ? AND orcamento_id <=> ? ORDER BY id DESC LIMIT 1',
+          'SELECT id, arquivo_nome, created_at, arquivo_path FROM importacoes_dae WHERE arquivo_hash = ? AND orcamento_id <=> ? ORDER BY id DESC LIMIT 1',
           [hash, orcamentoId],
         );
         if (dup.length) {
-          await apagar(url);
+          const { arquivo_path, ...duplicado } = dup[0];
+          if (arquivo_path !== url) await apagar(url);
+          dup[0] = duplicado;
           return res.status(409).json({ duplicado: dup[0], error: `Este arquivo já foi importado (importação nº ${dup[0].id}).` });
         }
       }
