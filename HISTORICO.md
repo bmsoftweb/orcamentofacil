@@ -1,5 +1,9 @@
 # Histórico de versões
 
+## 0.0.6 — 04/10/2026
+
+- Revisão da importação: clicar numa peça do 3D que não está no filtro aberto troca para o filtro da classificação dela e localiza a linha.
+
 ## 0.0.5 — 04/10/2026
 
 - Excluir uma importação apaga também o `.dae` e a malha do armazenamento (antes ficavam órfãos no Blob).

@@ -52,6 +52,14 @@ export const RevisaoImportacao: React.FC<Props> = ({ importacaoId, objetos, marc
   const visiveis = candidatos.filter((o) => filtro === 'TODOS' || (filtro === 'BAIXA' ? baixa(o) : o.classificacao === filtro));
   const todosMarcados = visiveis.length > 0 && visiveis.every((o) => marcados.has(o.id));
 
+  // Peça clicada no 3D fora do filtro atual: vai para o filtro da classificação dela e localiza a linha
+  useEffect(() => {
+    const o = candidatos.find((c) => c.id === selecionado);
+    if (!o) return;
+    if (!visiveis.includes(o)) setFiltro(o.classificacao as (typeof FILTROS)[number]);
+    else requestAnimationFrame(() => document.querySelector(`[data-objeto="${o.id}"]`)?.scrollIntoView({ block: 'nearest' }));
+  }, [selecionado, filtro]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const alternar = (id: number) => {
     const n = new Set(marcados);
     if (n.has(id)) n.delete(id);
