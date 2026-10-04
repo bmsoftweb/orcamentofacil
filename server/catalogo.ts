@@ -1,25 +1,9 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
 import { pool, comUsuario } from './db.js';
 import { getResource } from './schema.js';
 import { casaPadrao, ModoComparacao } from '../src/lib/texto.js';
-
-/** Pasta dos arquivos enviados (.env STORAGE_DIR); as imagens do catálogo ficam em <storage>/imagens */
-export const STORAGE_DIR = path.resolve(process.env.STORAGE_DIR || './storage');
-export const PASTA_IMAGENS = path.join(STORAGE_DIR, 'imagens');
-
-/**
- * Na Vercel o disco é só de leitura e some entre execuções: sem armazenamento externo, os envios
- * de arquivo são recusados com aviso (em vez de falhar com EROFS ou de perder o arquivo depois).
- * ponytail: mover .dae, malhas, imagens e anexos para o Vercel Blob quando o app rodar lá de verdade.
- */
-export function exigirArmazenamento() {
-  if (process.env.VERCEL) {
-    throw Object.assign(new Error('Envio de arquivos ainda não disponível na versão publicada na Vercel (falta o armazenamento de arquivos). Use o app local.'), { status: 501 });
-  }
-}
+import { gravar } from './armazenamento.js';
 
 const erro = (res: Response, err: any) => res.status(err.status || 400).json({ error: err.message });
 const falha = (msg: string, status = 400) => Object.assign(new Error(msg), { status });
@@ -28,18 +12,15 @@ const falha = (msg: string, status = 400) => Object.assign(new Error(msg), { sta
 export function createCatalogoRouter() {
   const router = Router();
 
-  // Imagem do catálogo (já reduzida no navegador), em data URI; devolve o caminho público
+  // Imagem do catálogo (já reduzida no navegador), em data URI; devolve o endereço público (Blob ou /arquivos)
   router.post('/imagens', async (req: Request, res: Response) => {
     try {
-      exigirArmazenamento();
       const m = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.dados || ''));
       if (!m) throw falha('Envie uma imagem JPEG, PNG ou WebP.');
       const bytes = Buffer.from(m[2], 'base64');
       if (bytes.length > 1_500_000) throw falha('Imagem grande demais (máx. 1,5 MB).');
-      const nome = `${crypto.randomUUID()}.${m[1] === 'jpeg' ? 'jpg' : m[1]}`;
-      await fs.promises.mkdir(PASTA_IMAGENS, { recursive: true });
-      await fs.promises.writeFile(path.join(PASTA_IMAGENS, nome), bytes);
-      res.json({ caminho: `/imagens/${nome}` });
+      const ext = m[1] === 'jpeg' ? 'jpg' : m[1];
+      res.json({ caminho: await gravar(`imagens/${crypto.randomUUID()}.${ext}`, bytes, `image/${m[1]}`) });
     } catch (err: any) {
       erro(res, err);
     }

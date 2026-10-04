@@ -1,15 +1,11 @@
-import express, { Router, Request, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
 import { pool } from './db.js';
-import { STORAGE_DIR, exigirArmazenamento } from './catalogo.js';
+import { apagar, enderecoValido, gravar, ler, urlDe } from './armazenamento.js';
 import { parseDae, ErroDae, ResultadoDae } from '../src/lib/dae/parser.js';
 import type { Classificacao } from '../src/lib/dae/classificador.js';
 import { classificarImportacao, atualizarTotais } from './classificacao.js';
 
-const PASTA_DAE = path.join(STORAGE_DIR, 'dae');
-const PASTA_MALHAS = path.join(STORAGE_DIR, 'malhas');
 const LOTE = 500;
 
 const n2 = (x: number | undefined) => (x === undefined ? null : x.toFixed(2));
@@ -75,12 +71,11 @@ async function gravarObjetos(conn: any, importacaoId: number, r: ResultadoDae, c
 
 /** Malha do visualizador: triângulos de cada instância (Float32 em base64), já com o id do objeto no banco */
 async function gravarMalha(importacaoId: number, r: ResultadoDae, idDb: number[]) {
-  await fs.promises.mkdir(PASTA_MALHAS, { recursive: true });
   const malha = {
     eixoUp: r.meta.eixoUp,
     instancias: r.instancias.map((i) => ({ objeto: idDb[i.objeto], cor: i.cor, tris: Buffer.from(i.tris.buffer, i.tris.byteOffset, i.tris.byteLength).toString('base64') })),
   };
-  await fs.promises.writeFile(path.join(PASTA_MALHAS, `${importacaoId}.json`), JSON.stringify(malha));
+  await gravar(`malhas/${importacaoId}.json`, JSON.stringify(malha), 'application/json');
 }
 
 /** Arquiteto do orçamento (os mapeamentos dele valem antes dos globais) */
@@ -94,32 +89,36 @@ export async function arquitetoDoOrcamento(orcamentoId: number | null): Promise<
 export function createImportacoesRouter() {
   const router = Router();
 
-  router.post('/importacoes', express.raw({ type: 'application/octet-stream', limit: '200mb' }), async (req: Request, res: Response) => {
+  /**
+   * Importa um .dae já enviado ao armazenamento (direto do navegador para o Blob, ou pelo servidor sem Blob):
+   * corpo { url, nome, orcamento_id?, forcar? }. Mesmo arquivo já importado: 409, e o envio repetido é apagado.
+   */
+  router.post('/importacoes', async (req: Request, res: Response) => {
     try {
-      exigirArmazenamento();
-      const arquivo = req.body as Buffer;
-      const nome = String(req.query.nome || 'modelo.dae').slice(0, 255);
-      if (!Buffer.isBuffer(arquivo) || !arquivo.length) return res.status(400).json({ error: 'Envie o arquivo .dae.' });
-      const orcamentoId = req.query.orcamento_id ? Number(req.query.orcamento_id) : null;
+      const url = String(req.body?.url ?? '');
+      if (!enderecoValido(url) || !/\/dae\//.test(url)) return res.status(400).json({ error: 'Envie o arquivo .dae.' });
+      const arquivo = await ler(url);
+      const nome = String(req.body?.nome || 'modelo.dae').slice(0, 255);
+      if (!arquivo.length) return res.status(400).json({ error: 'O arquivo .dae está vazio.' });
+      const orcamentoId = req.body?.orcamento_id ? Number(req.body.orcamento_id) : null;
       const hash = crypto.createHash('sha256').update(arquivo).digest('hex');
 
       // Mesmo arquivo já importado (no mesmo orçamento, ou também sem orçamento): avisa e só reimporta se pedirem
-      if (req.query.forcar !== '1') {
+      if (!req.body?.forcar) {
         const [dup] = await pool.query<any[]>(
           'SELECT id, arquivo_nome, created_at FROM importacoes_dae WHERE arquivo_hash = ? AND orcamento_id <=> ? ORDER BY id DESC LIMIT 1',
           [hash, orcamentoId],
         );
-        if (dup.length) return res.status(409).json({ duplicado: dup[0], error: `Este arquivo já foi importado (importação nº ${dup[0].id}).` });
+        if (dup.length) {
+          await apagar(url);
+          return res.status(409).json({ duplicado: dup[0], error: `Este arquivo já foi importado (importação nº ${dup[0].id}).` });
+        }
       }
-
-      await fs.promises.mkdir(PASTA_DAE, { recursive: true });
-      const caminho = path.join(PASTA_DAE, `${hash}.dae`);
-      if (!fs.existsSync(caminho)) await fs.promises.writeFile(caminho, arquivo);
 
       const [ins] = await pool.query<any>(
         `INSERT INTO importacoes_dae (orcamento_id, usuario_id, arquivo_nome, arquivo_path, arquivo_hash, tamanho_bytes, status)
          VALUES (?, ?, ?, ?, ?, ?, 'PROCESSANDO')`,
-        [orcamentoId, res.locals.usuarioId, nome, `dae/${hash}.dae`, hash, arquivo.length],
+        [orcamentoId, res.locals.usuarioId, nome, url, hash, arquivo.length],
       );
       const id = Number(ins.insertId);
 
@@ -183,10 +182,13 @@ export function createImportacoesRouter() {
     }
   });
 
-  router.get('/importacoes/:id/malha', (req: Request, res: Response) => {
-    const arquivo = path.join(PASTA_MALHAS, `${Number(req.params.id) || 0}.json`);
-    if (!fs.existsSync(arquivo)) return res.status(404).json({ error: 'Esta importação não tem malha para o visualizador.' });
-    res.type('application/json').sendFile(arquivo);
+  // Endereço da malha do visualizador: o navegador baixa direto do armazenamento (pode passar de 4,5 MB)
+  router.get('/importacoes/:id/malha', async (req: Request, res: Response) => {
+    try {
+      res.json({ url: await urlDe(`malhas/${Number(req.params.id) || 0}.json`) });
+    } catch (err: any) {
+      res.status(err.status || 500).json({ error: err.status === 404 ? 'Esta importação não tem malha para o visualizador.' : err.message });
+    }
   });
 
   return router;

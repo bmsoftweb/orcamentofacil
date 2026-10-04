@@ -4,6 +4,7 @@ import { pool, comUsuario } from './db.js';
 import { FieldDef, ResourceDef, RESOURCES, getResource, writableFields, columnNames, colunaSql } from './schema.js';
 import { antesDeGravar, antesDeExcluir, aposIncluir } from './regras.js';
 import { documentoValido } from '../src/lib/documento.js';
+import { enderecoValido } from './armazenamento.js';
 
 /** Metadados enviados ao navegador: o SQL próprio (combos, colunas calculadas) não sai do servidor */
 const RESOURCES_PUBLICOS = RESOURCES.map(({ optionsSql, scopeSql, ...r }) => ({ ...r, fields: r.fields.map(({ sql, ...f }) => f) }));
@@ -50,7 +51,7 @@ function coerceValue(field: FieldDef, raw: any): any {
     }
     case 'imagem': {
       const caminho = String(raw);
-      if (!/^\/imagens\/[\w-]+\.(jpg|png|webp)$/.test(caminho)) throw new Error(`Imagem inválida em "${field.label}".`);
+      if (!enderecoValido(caminho)) throw new Error(`Imagem inválida em "${field.label}".`);
       return caminho;
     }
     case 'date':

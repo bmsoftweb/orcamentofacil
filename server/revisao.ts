@@ -1,8 +1,6 @@
 import { Router, Request, Response } from 'express';
-import fs from 'fs';
-import path from 'path';
 import { pool } from './db.js';
-import { STORAGE_DIR } from './catalogo.js';
+import { ler } from './armazenamento.js';
 import { arquitetoDoOrcamento } from './importacoes.js';
 import { classificarImportacao, atualizarTotais } from './classificacao.js';
 import { parseDae } from '../src/lib/dae/parser.js';
@@ -89,7 +87,7 @@ export function createRevisaoRouter() {
       const imp = await importacao(req.params.id);
       if (imp.status === 'ERRO') throw falha('Importação com erro: importe o arquivo de novo.');
       const [[cfg]] = await pool.query<any[]>('SELECT arredondamento_medida_mm FROM configuracoes WHERE id = 1');
-      const r = parseDae(await fs.promises.readFile(path.join(STORAGE_DIR, imp.arquivo_path)), { arredondamentoMm: Number(cfg?.arredondamento_medida_mm ?? 1) });
+      const r = parseDae(await ler(imp.arquivo_path), { arredondamentoMm: Number(cfg?.arredondamento_medida_mm ?? 1) });
       const cls = await classificarImportacao(r, await arquitetoDoOrcamento(imp.orcamento_id));
 
       // Mesma ordem da gravação: nível a nível, na ordem do parser (ids crescentes)
@@ -314,7 +312,7 @@ async function caixasDosMoveis(importacaoId: number, objs: any[], movelDe: (o: a
   const out = new Map<string, { largura: string; altura: string; profundidade: string }>();
   let malha: { instancias: { objeto: number; tris: string }[] };
   try {
-    malha = JSON.parse(await fs.promises.readFile(path.join(STORAGE_DIR, 'malhas', `${importacaoId}.json`), 'utf8'));
+    malha = JSON.parse((await ler(`malhas/${importacaoId}.json`)).toString('utf8'));
   } catch {
     return out;
   }

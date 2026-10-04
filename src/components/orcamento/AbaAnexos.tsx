@@ -59,7 +59,7 @@ export const AbaAnexos: React.FC<PropsAba> = ({ e, recarregar, onToast }) => {
                 <td className="py-1.5 px-2">{a.usuario_nome}</td>
                 <td className="py-1.5 px-2 text-center">{formatDateTimeBR(a.created_at)}</td>
                 <td className="py-1.5 pl-2 text-right whitespace-nowrap">
-                  <button type="button" onClick={() => baixarAnexo(id, { id: a.id, nome_original: a.nome_original }).catch((x) => onToast(x.message))} title="Baixar" className="p-1 rounded text-stone-400 hover:text-blue-600 cursor-pointer">
+                  <button type="button" onClick={() => baixarAnexo(id, { id: a.id, nome_original: a.nome_original, arquivo_path: a.arquivo_path }).catch((x) => onToast(x.message))} title="Baixar" className="p-1 rounded text-stone-400 hover:text-blue-600 cursor-pointer">
                     <Download className="w-3.5 h-3.5" />
                   </button>
                   <button type="button" onClick={() => setExcluir(a)} title="Excluir o anexo" className="p-1 rounded text-stone-400 hover:text-rose-600 cursor-pointer">

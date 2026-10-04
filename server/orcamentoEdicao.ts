@@ -1,16 +1,13 @@
-import express, { Router, Request, Response } from 'express';
-import crypto from 'crypto';
-import fs from 'fs';
+import { Router, Request, Response } from 'express';
 import path from 'path';
 import { pool } from './db.js';
-import { STORAGE_DIR, exigirArmazenamento } from './catalogo.js';
+import { apagar, enderecoValido, ler } from './armazenamento.js';
 import { calcularNoBanco } from './calculo.js';
 import { dataLocal } from './orcamentos.js';
 
 const falha = (msg: string, status = 400) => Object.assign(new Error(msg), { status });
 const erro = (res: Response, err: any) => res.status(err.status || 400).json({ error: err.message, ...(err.extra ?? {}) });
 const EDITAVEIS = ['RASCUNHO', 'EM_REVISAO'];
-const PASTA_ANEXOS = path.join(STORAGE_DIR, 'anexos');
 
 /** Fluxo de status: de → para (CANCELADO vale de qualquer um, menos EM_PRODUCAO e dele mesmo) */
 export const TRANSICOES: Record<string, string[]> = {
@@ -462,22 +459,19 @@ export function createOrcamentoEdicaoRouter() {
   // -------------------------------------------------------------------------
   // Anexos (em qualquer status)
   // -------------------------------------------------------------------------
-  router.post('/orcamentos/:id/anexos', express.raw({ type: 'application/octet-stream', limit: '200mb' }), async (req: Request, res: Response) => {
+  /** Grava o anexo já enviado ao armazenamento (direto do navegador para o Blob, ou pelo servidor sem Blob) */
+  router.post('/orcamentos/:id/anexos', async (req: Request, res: Response) => {
     try {
-      exigirArmazenamento();
       const o = await orcamento(req.params.id);
-      const arquivo = req.body as Buffer;
-      const nome = String(req.query.nome || 'arquivo').slice(0, 255);
-      if (!Buffer.isBuffer(arquivo) || !arquivo.length) throw falha('Envie o arquivo.');
-      const relativo = path.join('anexos', String(o.id), `${crypto.randomUUID()}${path.extname(nome).toLowerCase()}`);
-      await fs.promises.mkdir(path.join(STORAGE_DIR, 'anexos', String(o.id)), { recursive: true });
-      await fs.promises.writeFile(path.join(STORAGE_DIR, relativo), arquivo);
+      const url = String(req.body?.url ?? '');
+      if (!enderecoValido(url) || !decodeURIComponent(url).includes(`/anexos/${o.id}/`)) throw falha('Endereço do anexo inválido.');
+      const nome = String(req.body?.nome || 'arquivo').slice(0, 255);
       const [r] = await pool.query<any>('INSERT INTO orcamento_anexos (orcamento_id, tipo, nome_original, arquivo_path, tamanho_bytes, usuario_id) VALUES (?, ?, ?, ?, ?, ?)', [
         o.id,
         tipoAnexo(nome),
         nome,
-        relativo.replace(/\\/g, '/'),
-        arquivo.length,
+        url.slice(0, 500),
+        Math.max(0, Math.trunc(Number(req.body?.tamanho) || 0)) || null,
         res.locals.usuarioId,
       ]);
       res.json({ id: r.insertId });
@@ -485,13 +479,15 @@ export function createOrcamentoEdicaoRouter() {
       erro(res, err);
     }
   });
+  // Download pelo servidor dos anexos no disco (os do Blob o navegador abre direto pela URL)
   router.get('/orcamentos/:id/anexos/:aid', async (req: Request, res: Response) => {
     try {
       const [[a]] = await pool.query<any[]>('SELECT * FROM orcamento_anexos WHERE id = ? AND orcamento_id = ?', [req.params.aid, req.params.id]);
       if (!a) throw falha('Anexo não encontrado.', 404);
-      const arquivo = path.resolve(STORAGE_DIR, a.arquivo_path);
-      if (!arquivo.startsWith(PASTA_ANEXOS) || !fs.existsSync(arquivo)) throw falha('Arquivo do anexo não encontrado no servidor.', 404);
-      res.download(arquivo, a.nome_original);
+      const dados = await ler(a.arquivo_path).catch(() => {
+        throw falha('Arquivo do anexo não encontrado no armazenamento.', 404);
+      });
+      res.attachment(a.nome_original).send(dados);
     } catch (err: any) {
       erro(res, err);
     }
@@ -503,7 +499,7 @@ export function createOrcamentoEdicaoRouter() {
       await pool.query('DELETE FROM orcamento_anexos WHERE id = ?', [a.id]);
       // As revisões copiam a linha e apontam para o mesmo arquivo: só apaga quando ninguém mais usa
       const [[uso]] = await pool.query<any[]>('SELECT COUNT(*) AS n FROM orcamento_anexos WHERE arquivo_path = ?', [a.arquivo_path]);
-      if (!Number(uso.n)) await fs.promises.unlink(path.resolve(STORAGE_DIR, a.arquivo_path)).catch(() => {});
+      if (!Number(uso.n)) await apagar(a.arquivo_path);
       res.json({ success: true });
     } catch (err: any) {
       erro(res, err);

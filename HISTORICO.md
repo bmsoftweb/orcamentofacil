@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## 0.0.4 — 04/10/2026
+
+Armazenamento na Vercel Blob (store "orcamentofacil"), no padrão do crmWeb:
+
+- `.dae`, anexos e imagens vão direto do navegador para o Blob (sem o limite de 4,5 MB da Vercel); o servidor só libera o envio, por pasta e tamanho máximo.
+- Malhas do visualizador 3D, imagens do catálogo e logo lidos do Blob (também nos PDFs).
+- Sem `BLOB_READ_WRITE_TOKEN` (desenvolvimento local), os arquivos ficam no disco (`STORAGE_DIR`).
+
 ## 0.0.3 — 04/10/2026
 
 Publicação na Vercel:

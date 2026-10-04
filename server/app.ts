@@ -4,7 +4,9 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { pool, checkDbHealth } from './db.js';
 import { createCrudRouter } from './crud.js';
-import { createCatalogoRouter, PASTA_IMAGENS } from './catalogo.js';
+import path from 'path';
+import { createCatalogoRouter } from './catalogo.js';
+import { createArmazenamentoRouter, STORAGE_DIR } from './armazenamento.js';
 import { createImportacoesRouter } from './importacoes.js';
 import { createRevisaoRouter } from './revisao.js';
 import { expirarVencidos } from './orcamentoEdicao.js';
@@ -95,8 +97,10 @@ export function createApp() {
     }
   });
 
-  // Imagens do catálogo: públicas (nome aleatório), para servirem direto no <img>
-  app.use('/imagens', express.static(PASTA_IMAGENS, { maxAge: '30d', immutable: true }));
+  // Arquivos no disco (sem Blob, desenvolvimento local): públicos com nome aleatório, como no Blob.
+  // /imagens = endereço das imagens gravadas antes do armazenamento unificado.
+  app.use('/arquivos', express.static(STORAGE_DIR, { maxAge: '30d' }));
+  app.use('/imagens', express.static(path.join(STORAGE_DIR, 'imagens'), { maxAge: '30d', immutable: true }));
 
   app.get('/api/db/status', async (_req: Request, res: Response) => {
     res.json(await checkDbHealth());
@@ -190,6 +194,7 @@ export function createApp() {
     next();
   });
 
+  app.use('/api', createArmazenamentoRouter());
   app.use('/api', createCatalogoRouter());
   app.use('/api', createImportacoesRouter());
   app.use('/api', createRevisaoRouter());

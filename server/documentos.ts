@@ -1,8 +1,6 @@
 import { Router, Request, Response } from 'express';
-import fs from 'fs';
-import path from 'path';
 import { pool } from './db.js';
-import { STORAGE_DIR, PASTA_IMAGENS } from './catalogo.js';
+import { ler } from './armazenamento.js';
 import { gerarPdf } from './pdf.js';
 import { dadosPlanoCorte } from './calculo.js';
 import { Empresa } from '../src/lib/pdf/comum.js';
@@ -21,10 +19,13 @@ const ABERTOS = "('RASCUNHO', 'EM_REVISAO', 'ENVIADO')";
 async function empresa(): Promise<Empresa> {
   const [[c]] = await pool.query<any[]>('SELECT * FROM configuracoes WHERE id = 1');
   let logo: string | null = null;
-  const nome = /^\/imagens\/([\w-]+\.(jpg|png|webp))$/.exec(String(c.logo_path ?? ''));
-  if (nome) {
-    const arquivo = path.join(PASTA_IMAGENS, nome[1]);
-    if (fs.existsSync(arquivo)) logo = `data:image/${nome[2] === 'jpg' ? 'jpeg' : nome[2]};base64,${(await fs.promises.readFile(arquivo)).toString('base64')}`;
+  const ext = /\.(jpg|jpeg|png|webp)(\?|$)/i.exec(String(c.logo_path ?? ''))?.[1]?.toLowerCase();
+  if (ext) {
+    try {
+      logo = `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${(await ler(c.logo_path)).toString('base64')}`;
+    } catch {
+      // logo inacessível: o cabeçalho sai com o nome da empresa
+    }
   }
   return { ...c, logo };
 }
@@ -43,7 +44,7 @@ async function miniaturas(moveis: any[]): Promise<Map<number, string>> {
   for (const [imp, lista] of porImportacao) {
     let malha: { eixoUp: string; instancias: { objeto: number; cor: string | null; tris: string }[] };
     try {
-      malha = JSON.parse(await fs.promises.readFile(path.join(STORAGE_DIR, 'malhas', `${imp}.json`), 'utf8'));
+      malha = JSON.parse((await ler(`malhas/${imp}.json`)).toString('utf8'));
     } catch {
       continue;
     }

@@ -228,8 +228,13 @@ export async function importarDae(
   forcar = false,
   orcamentoId?: Id | null,
 ): Promise<ResultadoImportacao | { duplicado: { id: number; arquivo_nome: string; created_at: string } }> {
-  const qs = new URLSearchParams({ nome: arquivo.name, ...(forcar ? { forcar: '1' } : {}), ...(orcamentoId ? { orcamento_id: String(orcamentoId) } : {}) });
-  const res = await fetch(`/api/importacoes?${qs}`, { method: 'POST', headers: headers({ 'Content-Type': 'application/octet-stream' }), body: arquivo });
+  // O arquivo vai primeiro para o armazenamento; o servidor lê de lá (sem o limite de 4,5 MB da Vercel)
+  const url = await enviarArquivo(`dae/${nomeSeguro(arquivo.name)}`, arquivo);
+  const res = await fetch('/api/importacoes', {
+    method: 'POST',
+    headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ url, nome: arquivo.name, orcamento_id: orcamentoId || null, forcar }),
+  });
   if (res.status === 409) return res.json();
   return parseOrThrow(res);
 }
@@ -270,7 +275,13 @@ export interface MalhaImportacao {
   eixoUp: 'X_UP' | 'Y_UP' | 'Z_UP';
   instancias: { objeto: number; cor: string | null; tris: string }[];
 }
-export const fetchMalhaImportacao = (id: Id): Promise<MalhaImportacao> => get(`/api/importacoes/${id}/malha`);
+/** A malha vem direto do armazenamento (pode passar do limite de resposta da Vercel) */
+export async function fetchMalhaImportacao(id: Id): Promise<MalhaImportacao> {
+  const { url } = await get(`/api/importacoes/${id}/malha`);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Não foi possível carregar o modelo 3D (HTTP ${res.status}).`);
+  return res.json();
+}
 
 // ------------------------------------------------------------
 // Revisão da importação
@@ -401,15 +412,18 @@ export interface ItemCatalogoBusca {
 export const buscarCatalogo = (q: string): Promise<ItemCatalogoBusca[]> => get(`/api/catalogo/busca?q=${encodeURIComponent(q)}`);
 
 export async function enviarAnexo(orcamentoId: Id, arquivo: File): Promise<{ id: number }> {
-  const res = await fetch(`/api/orcamentos/${orcamentoId}/anexos?nome=${encodeURIComponent(arquivo.name)}`, {
-    method: 'POST',
-    headers: headers({ 'Content-Type': 'application/octet-stream' }),
-    body: arquivo,
-  });
-  return parseOrThrow(res);
+  const url = await enviarArquivo(`anexos/${orcamentoId}/${nomeSeguro(arquivo.name)}`, arquivo);
+  return enviar('POST', `/api/orcamentos/${orcamentoId}/anexos`, { url, nome: arquivo.name, tamanho: arquivo.size });
 }
-/** Baixa o anexo (a rota exige o token, então vem como blob e é salvo pelo navegador) */
-export async function baixarAnexo(orcamentoId: Id, anexo: { id: Id; nome_original: string }) {
+/**
+ * Abre o anexo: no Blob, direto pela URL pública (nova aba); no disco, pela rota do servidor (exige o token,
+ * então vem como blob e é salvo pelo navegador).
+ */
+export async function baixarAnexo(orcamentoId: Id, anexo: { id: Id; nome_original: string; arquivo_path?: string }) {
+  if (/^https:\/\//i.test(anexo.arquivo_path ?? '')) {
+    window.open(anexo.arquivo_path, '_blank', 'noopener');
+    return;
+  }
   const res = await fetch(`/api/orcamentos/${orcamentoId}/anexos/${anexo.id}`, { headers: headers() });
   if (!res.ok) return parseOrThrow(res);
   const url = URL.createObjectURL(await res.blob());
@@ -458,3 +472,37 @@ export interface Painel {
   vencendo: { id: number; numero: string; revisao: number; titulo: string; status: string; data_validade: string; valor_final: string; cliente_nome: string }[];
 }
 export const fetchPainel = (): Promise<Painel> => get('/api/dashboard');
+
+// ------------------------------------------------------------
+// Armazenamento de arquivos (Vercel Blob ou disco do servidor)
+// ------------------------------------------------------------
+/** Nome seguro para o caminho do arquivo (mesma regra do servidor) */
+export const nomeSeguro = (nome: string) => nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.-]+/g, '_').slice(-120) || 'arquivo';
+
+let modoArmazenamento: Promise<{ blob: boolean; configurado: boolean }> | null = null;
+
+/**
+ * Envia um arquivo do navegador para o armazenamento e devolve o endereço. Com Vercel Blob, vai direto
+ * para o Blob (o servidor só libera o envio, como no crmweb); sem ele, vai para o servidor.
+ */
+export async function enviarArquivo(caminho: string, arquivo: File): Promise<string> {
+  modoArmazenamento ??= get('/api/armazenamento').catch((e) => {
+    modoArmazenamento = null;
+    throw e;
+  });
+  const modo = await modoArmazenamento!;
+  if (!modo.configurado) throw new Error('Armazenamento de arquivos não configurado no servidor (Vercel Blob).');
+  if (modo.blob) {
+    const { upload } = await import('@vercel/blob/client');
+    const blob = await upload(caminho, arquivo, {
+      access: 'public',
+      handleUploadUrl: '/api/arquivos/upload',
+      headers: headers(),
+      multipart: arquivo.size > 5 * 1024 * 1024,
+    });
+    return blob.url;
+  }
+  const qs = new URLSearchParams({ caminho, tipo: arquivo.type || 'application/octet-stream' });
+  const res = await fetch(`/api/arquivos?${qs}`, { method: 'POST', headers: headers({ 'Content-Type': 'application/octet-stream' }), body: arquivo });
+  return (await parseOrThrow(res)).url;
+}

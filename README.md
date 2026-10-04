@@ -44,8 +44,8 @@ headless. Sem o navegador no caminho padrão, informe `NAVEGADOR_PDF` no `.env`.
 
 ## Arquivos
 
-Arquivos enviados ficam em `STORAGE_DIR` (padrão `./storage`, fora do Git): `.dae` importados, malhas do
-visualizador, imagens do catálogo e anexos dos orçamentos.
+Arquivos enviados (`.dae` importados, malhas do visualizador, imagens do catálogo e anexos) ficam no Vercel Blob
+quando há `BLOB_READ_WRITE_TOKEN`; sem ele, em `STORAGE_DIR` (padrão `./storage`, fora do Git). Ver "Vercel".
 
 O servidor (tsx, sem watch) não recarrega sozinho: depois de mexer em `server/` ou `src/lib/`, reinicie.
 
@@ -54,8 +54,10 @@ O servidor (tsx, sem watch) não recarrega sozinho: depois de mexer em `server/`
 `api/index.ts` expõe o app Express como função; o `vercel.json` encaminha `/api/*` para ela e agenda a
 rotina diária `/api/cron/expirar` (orçamentos enviados e vencidos viram EXPIRADO). Variáveis de ambiente
 no projeto da Vercel: `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`,
-`SESSION_SECRET` e `CRON_SECRET`. Os PDFs usam o Chromium do `@sparticuz/chromium`.
+`SESSION_SECRET`, `CRON_SECRET` e `BLOB_READ_WRITE_TOKEN` (criado ao ligar o Blob). Os PDFs usam o Chromium do `@sparticuz/chromium`.
 
-Ainda não há armazenamento de arquivos na Vercel (o disco é só de leitura): importar `.dae`, enviar imagens
-e anexos ficam recusados lá, com aviso. Para isso, os arquivos precisam ir para um armazenamento externo
-(ex.: Vercel Blob).
+Arquivos (`.dae`, malhas do visualizador 3D, imagens e anexos) ficam no **Vercel Blob** (store
+`orcamentofacil`, ligado ao projeto: a Vercel cria `BLOB_READ_WRITE_TOKEN`). `.dae` e anexos vão direto do
+navegador para o Blob (sem o limite de 4,5 MB da Vercel; o servidor só libera o envio em `/api/arquivos/upload`).
+Para usar o mesmo Blob localmente, copie o `BLOB_READ_WRITE_TOKEN` para o `.env`; sem ele, os arquivos ficam no
+disco (`STORAGE_DIR`, servidos em `/arquivos`). Tudo passa por `server/armazenamento.ts`.
