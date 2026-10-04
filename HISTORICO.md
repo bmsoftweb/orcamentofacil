@@ -1,5 +1,9 @@
 # Histórico de versões
 
+## 0.0.7 — 04/10/2026
+
+- Revisão da importação: com uma peça clicada no 3D, voltou a ser possível trocar de filtro (antes ele voltava sozinho para o filtro da peça).
+
 ## 0.0.6 — 04/10/2026
 
 - Revisão da importação: clicar numa peça do 3D que não está no filtro aberto troca para o filtro da classificação dela e localiza a linha.

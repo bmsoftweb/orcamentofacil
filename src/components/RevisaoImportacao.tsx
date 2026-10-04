@@ -57,8 +57,9 @@ export const RevisaoImportacao: React.FC<Props> = ({ importacaoId, objetos, marc
     const o = candidatos.find((c) => c.id === selecionado);
     if (!o) return;
     if (!visiveis.includes(o)) setFiltro(o.classificacao as (typeof FILTROS)[number]);
-    else requestAnimationFrame(() => document.querySelector(`[data-objeto="${o.id}"]`)?.scrollIntoView({ block: 'nearest' }));
-  }, [selecionado, filtro]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Dois quadros: o primeiro desenha a lista do filtro novo
+    requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector(`[data-objeto="${o.id}"]`)?.scrollIntoView({ block: 'nearest' })));
+  }, [selecionado]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const alternar = (id: number) => {
     const n = new Set(marcados);
