@@ -48,3 +48,14 @@ Arquivos enviados ficam em `STORAGE_DIR` (padrão `./storage`, fora do Git): `.d
 visualizador, imagens do catálogo e anexos dos orçamentos.
 
 O servidor (tsx, sem watch) não recarrega sozinho: depois de mexer em `server/` ou `src/lib/`, reinicie.
+
+## Vercel
+
+`api/index.ts` expõe o app Express como função; o `vercel.json` encaminha `/api/*` para ela e agenda a
+rotina diária `/api/cron/expirar` (orçamentos enviados e vencidos viram EXPIRADO). Variáveis de ambiente
+no projeto da Vercel: `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`,
+`SESSION_SECRET` e `CRON_SECRET`. Os PDFs usam o Chromium do `@sparticuz/chromium`.
+
+Ainda não há armazenamento de arquivos na Vercel (o disco é só de leitura): importar `.dae`, enviar imagens
+e anexos ficam recusados lá, com aviso. Para isso, os arquivos precisam ir para um armazenamento externo
+(ex.: Vercel Blob).

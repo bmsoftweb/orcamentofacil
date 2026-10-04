@@ -6,8 +6,10 @@ import os from 'os';
 import path from 'path';
 
 /**
- * PDF a partir de HTML com o Edge/Chrome instalado no servidor, em modo headless (mesma solução do
- * crmweb). Caminho do navegador: NAVEGADOR_PDF no .env, ou o primeiro encontrado nos locais padrão.
+ * PDF a partir de HTML (mesma solução do crmweb):
+ * - Na Vercel (serverless, sem navegador instalado): Chromium do @sparticuz/chromium, controlado pelo puppeteer-core.
+ * - Nos demais servidores: Edge/Chrome instalado, em modo headless. Caminho do navegador: NAVEGADOR_PDF no .env,
+ *   ou o primeiro encontrado nos locais padrão.
  */
 const CANDIDATOS = [
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
@@ -24,7 +26,31 @@ function navegador(): string {
   return escolhido;
 }
 
+/** Na Vercel: Chromium empacotado para serverless. Importado só aqui, para não pesar fora dela */
+async function pdfServerless(html: string): Promise<Buffer> {
+  const [{ default: chromium }, { default: puppeteer }] = await Promise.all([import('@sparticuz/chromium'), import('puppeteer-core')]);
+  const browser = await puppeteer.launch({
+    args: await puppeteer.defaultArgs({ args: chromium.args, headless: 'shell' }),
+    executablePath: await chromium.executablePath(),
+    headless: 'shell',
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'load', timeout: 30_000 });
+    return Buffer.from(await page.pdf({ preferCSSPageSize: true, printBackground: true }));
+  } finally {
+    await browser.close();
+  }
+}
+
 export async function gerarPdf(html: string): Promise<Buffer> {
+  if (process.env.VERCEL) {
+    try {
+      return await pdfServerless(html);
+    } catch (err: any) {
+      throw new Error(`Não foi possível gerar o PDF: ${err.message}`);
+    }
+  }
   const pasta = await fs.mkdtemp(path.join(os.tmpdir(), 'orcamentofacil-pdf-'));
   try {
     const entrada = path.join(pasta, 'doc.html');

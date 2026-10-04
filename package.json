@@ -1,7 +1,7 @@
 {
   "name": "orcamentofacil",
   "private": true,
-  "version": "0.0.2",
+  "version": "0.0.3",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@sparticuz/chromium": "^153.0.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "bcryptjs": "^3.0.3",
@@ -21,6 +22,7 @@
     "gl-matrix": "^3.4.4",
     "lucide-react": "^0.546.0",
     "mysql2": "^3.24.4",
+    "puppeteer-core": "^25.12.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "three": "^0.186.1",

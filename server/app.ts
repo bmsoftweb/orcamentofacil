@@ -7,6 +7,7 @@ import { createCrudRouter } from './crud.js';
 import { createCatalogoRouter, PASTA_IMAGENS } from './catalogo.js';
 import { createImportacoesRouter } from './importacoes.js';
 import { createRevisaoRouter } from './revisao.js';
+import { expirarVencidos } from './orcamentoEdicao.js';
 import { createCalculoRouter } from './calculo.js';
 import { createOrcamentoEdicaoRouter } from './orcamentoEdicao.js';
 import { createDocumentosRouter } from './documentos.js';
@@ -99,6 +100,22 @@ export function createApp() {
 
   app.get('/api/db/status', async (_req: Request, res: Response) => {
     res.json(await checkDbHealth());
+  });
+
+  // Rotina diária da Vercel (vercel.json › crons), que envia "Authorization: Bearer CRON_SECRET".
+  // Fora da Vercel a expiração roda pelo setInterval do server.ts.
+  app.get('/api/cron/expirar', async (req: Request, res: Response) => {
+    const segredo = process.env.CRON_SECRET;
+    const recebido = String(req.header('authorization') || '');
+    const esperado = `Bearer ${segredo}`;
+    if (!segredo || recebido.length !== esperado.length || !crypto.timingSafeEqual(Buffer.from(recebido), Buffer.from(esperado))) {
+      return res.status(401).json({ error: 'Não autorizado.' });
+    }
+    try {
+      res.json({ expirados: await expirarVencidos() });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // ==========================================================

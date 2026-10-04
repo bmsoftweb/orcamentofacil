@@ -1,5 +1,14 @@
 # Histórico de versões
 
+## 0.0.3 — 04/10/2026
+
+Publicação na Vercel:
+
+- `api/index.ts` + `vercel.json`: o servidor roda como função da Vercel (corrige o "Falha no login (HTTP 404)").
+- PDFs na Vercel pelo Chromium do `@sparticuz/chromium`.
+- Expiração dos orçamentos como rotina diária da Vercel (`/api/cron/expirar`, protegida por `CRON_SECRET`).
+- Envio de arquivos (importar .dae, imagens e anexos) recusado na Vercel com aviso, até haver armazenamento externo.
+
 ## 0.0.2 — 04/10/2026
 
 Primeira versão publicada, com as 8 fases do projeto:

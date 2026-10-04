@@ -10,6 +10,17 @@ import { casaPadrao, ModoComparacao } from '../src/lib/texto.js';
 export const STORAGE_DIR = path.resolve(process.env.STORAGE_DIR || './storage');
 export const PASTA_IMAGENS = path.join(STORAGE_DIR, 'imagens');
 
+/**
+ * Na Vercel o disco é só de leitura e some entre execuções: sem armazenamento externo, os envios
+ * de arquivo são recusados com aviso (em vez de falhar com EROFS ou de perder o arquivo depois).
+ * ponytail: mover .dae, malhas, imagens e anexos para o Vercel Blob quando o app rodar lá de verdade.
+ */
+export function exigirArmazenamento() {
+  if (process.env.VERCEL) {
+    throw Object.assign(new Error('Envio de arquivos ainda não disponível na versão publicada na Vercel (falta o armazenamento de arquivos). Use o app local.'), { status: 501 });
+  }
+}
+
 const erro = (res: Response, err: any) => res.status(err.status || 400).json({ error: err.message });
 const falha = (msg: string, status = 400) => Object.assign(new Error(msg), { status });
 
@@ -20,6 +31,7 @@ export function createCatalogoRouter() {
   // Imagem do catálogo (já reduzida no navegador), em data URI; devolve o caminho público
   router.post('/imagens', async (req: Request, res: Response) => {
     try {
+      exigirArmazenamento();
       const m = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.dados || ''));
       if (!m) throw falha('Envie uma imagem JPEG, PNG ou WebP.');
       const bytes = Buffer.from(m[2], 'base64');

@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { pool } from './db.js';
-import { STORAGE_DIR } from './catalogo.js';
+import { STORAGE_DIR, exigirArmazenamento } from './catalogo.js';
 import { parseDae, ErroDae, ResultadoDae } from '../src/lib/dae/parser.js';
 import type { Classificacao } from '../src/lib/dae/classificador.js';
 import { classificarImportacao, atualizarTotais } from './classificacao.js';
@@ -96,6 +96,7 @@ export function createImportacoesRouter() {
 
   router.post('/importacoes', express.raw({ type: 'application/octet-stream', limit: '200mb' }), async (req: Request, res: Response) => {
     try {
+      exigirArmazenamento();
       const arquivo = req.body as Buffer;
       const nome = String(req.query.nome || 'modelo.dae').slice(0, 255);
       if (!Buffer.isBuffer(arquivo) || !arquivo.length) return res.status(400).json({ error: 'Envie o arquivo .dae.' });

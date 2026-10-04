@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { pool } from './db.js';
-import { STORAGE_DIR } from './catalogo.js';
+import { STORAGE_DIR, exigirArmazenamento } from './catalogo.js';
 import { calcularNoBanco } from './calculo.js';
 import { dataLocal } from './orcamentos.js';
 
@@ -464,6 +464,7 @@ export function createOrcamentoEdicaoRouter() {
   // -------------------------------------------------------------------------
   router.post('/orcamentos/:id/anexos', express.raw({ type: 'application/octet-stream', limit: '200mb' }), async (req: Request, res: Response) => {
     try {
+      exigirArmazenamento();
       const o = await orcamento(req.params.id);
       const arquivo = req.body as Buffer;
       const nome = String(req.query.nome || 'arquivo').slice(0, 255);
