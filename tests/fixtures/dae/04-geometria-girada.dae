@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1">
+<asset><contributor><authoring_tool>Gerador de fixtures OrçamentoFácil</authoring_tool></contributor><unit meter="0.0254" name="inch"/><up_axis>Z_UP</up_axis></asset>
+<library_cameras><camera id="CAM" name="camera"><optics><technique_common><perspective><yfov>35</yfov><znear>1</znear><zfar>1000</zfar></perspective></technique_common></optics></camera></library_cameras>
+<library_visual_scenes><visual_scene id="CENA"><node name="SketchUp"><node name="camera"><matrix>1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1</matrix><instance_camera url="#CAM"/></node><node name="Painel"><node name="Prateleira Girada"><instance_geometry url="#G1"><bind_material><technique_common><instance_material symbol="M0" target="#MAT0"/></technique_common></bind_material></instance_geometry></node></node></node></visual_scene></library_visual_scenes>
+<library_nodes></library_nodes>
+<library_geometries><geometry id="G1"><mesh><source id="G1-p"><float_array id="G1-a" count="24">3.937008 1.968504 0 24.394301 13.779528 0 18.488789 24.008174 0 -1.968504 12.19715 0 3.937008 1.968504 0.708661 24.394301 13.779528 0.708661 18.488789 24.008174 0.708661 -1.968504 12.19715 0.708661</float_array><technique_common><accessor source="#G1-a" count="8" stride="3"><param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/></accessor></technique_common></source><vertices id="G1-v"><input semantic="POSITION" source="#G1-p"/></vertices><triangles count="12" material="M0"><input semantic="VERTEX" source="#G1-v" offset="0"/><p>0 3 2 0 2 1 4 5 6 4 6 7 0 1 5 0 5 4 2 3 7 2 7 6 1 2 6 1 6 5 3 0 4 3 4 7</p></triangles><lines count="1"><input semantic="VERTEX" source="#G1-v" offset="0"/><p>0 1</p></lines></mesh></geometry></library_geometries>
+<library_materials><material id="MAT0" name="MDF Branco TX"><instance_effect url="#EF0"/></material></library_materials>
+<library_effects><effect id="EF0"><profile_COMMON><technique sid="COMMON"><lambert><diffuse><color>0.95 0.95 0.93 1</color></diffuse></lambert></technique></profile_COMMON></effect></library_effects>
+<scene><instance_visual_scene url="#CENA"/></scene>
+</COLLADA>
