@@ -30,10 +30,10 @@ const baixa = (o: ObjetoImportacao) => o.classificacao !== 'IGNORAR' && Number(o
 const nomeDe = (o: ObjetoImportacao) => (o.nome_definicao && /^(group|instance)/i.test(o.nome) ? o.nome_definicao : o.nome);
 /** Objetos somados numa peça pela junção ("Somado em "nome" (nº id)"; as primeiras junções só tinham o nome) */
 export const juntadosEm = (p: ObjetoImportacao, objetos: ObjetoImportacao[]) => objetos.filter((o) => somadoEm(o, p));
-/** Na junção, a principal é a primeira marcada que já é uma junção (recebe os novos); senão, a primeira marcada */
+/** No agrupamento, a principal é a peça já existente marcada (recebe os novos); senão, a primeira marcada */
 const principalDa = (ids: number[], objetos: ObjetoImportacao[]) => {
   const marcados = ids.map((id) => objetos.find((o) => o.id === id)!).filter(Boolean);
-  return marcados.find((o) => juntadosEm(o, objetos).length) ?? marcados[0];
+  return marcados.find((o) => o.classificacao === 'PECA') ?? marcados.find((o) => juntadosEm(o, objetos).length) ?? marcados[0];
 };
 /** Peça: tipo, chapa e fita; a classificar: a sugestão do classificador (vira a peça ao confirmar) */
 const detalheDe = (o: ObjetoImportacao) => (o.classificacao === 'PECA' || o.classificacao === 'DESCONHECIDO' ?[o.tipo_peca, o.chapa, o.fita].filter(Boolean).join(' · ') : o.material ?? o.insumo ?? '');
@@ -50,6 +50,25 @@ const COLUNAS: { chave: string; rotulo: string; direita?: boolean; valor: (o: Ob
 const comparar = (a: string | number[], b: string | number[]) =>
   typeof a === 'string' ? a.localeCompare(b as string, 'pt-BR', { numeric: true, sensitivity: 'base' }) : a.reduce((r, x, i) => r || x - (b as number[])[i], 0);
 
+/** Cores das medidas repetidas (lista, bolinha e 3D); sem âmbar, que é a cor da seleção no 3D */
+const CORES_MEDIDA = ['#0ea5e9', '#10b981', '#f43f5e', '#8b5cf6', '#84cc16', '#06b6d4', '#d946ef', '#6366f1', '#14b8a6', '#ec4899'];
+const chaveMedida = (o: ObjetoImportacao) => (o.comprimento_mm == null ? '' : [o.comprimento_mm, o.largura_mm, o.espessura_mm].map((x) => Math.round(Number(x))).join('x'));
+
+/**
+ * Cor de cada objeto cuja medida (C × L × E, ao milímetro) se repete; medida única fica sem cor.
+ * Não depende do filtro: as medidas repetidas são coloridas da maior para a menor, então a cor é a mesma na lista e no 3D.
+ */
+export function coresPorMedida(objetos: ObjetoImportacao[]): Map<number, string> {
+  const pecas = objetos.filter((o) => o.classificacao !== 'MOVEL' && o.classificacao !== 'GRUPO' && chaveMedida(o));
+  const grupos = new Map<string, ObjetoImportacao[]>();
+  for (const o of pecas) grupos.set(chaveMedida(o), [...(grupos.get(chaveMedida(o)) ?? []), o]);
+  const repetidas = [...grupos.entries()].filter(([, l]) => l.length > 1).sort(([a], [b]) => comparar(b.split('x').map(Number), a.split('x').map(Number)));
+  const cor = new Map<number, string>();
+  repetidas.forEach(([, l], i) => l.forEach((o) => cor.set(o.id, CORES_MEDIDA[i % CORES_MEDIDA.length])));
+  return cor;
+}
+
+
 interface Props {
   importacaoId: number;
   objetos: ObjetoImportacao[];
@@ -60,12 +79,16 @@ interface Props {
   onSelecionar: (id: number | null) => void;
   onGravado: (msg: string) => void;
   temArquiteto: boolean;
+  /** Avisa o filtro escolhido (o 3D esconde os já classificados em "A classificar") */
+  onFiltro?: (filtro: string) => void;
 }
 
 /** Lista de revisão: desconhecidos e baixa confiança primeiro, filtros com contadores e edição em massa */
-export const RevisaoImportacao: React.FC<Props> = ({ importacaoId, objetos, marcados, onMarcar, selecionado, onSelecionar, onGravado, temArquiteto }) => {
+export const RevisaoImportacao: React.FC<Props> = ({ importacaoId, objetos, marcados, onMarcar, selecionado, onSelecionar, onGravado, temArquiteto, onFiltro }) => {
   const [filtro, setFiltro] = useState<(typeof FILTROS)[number]>('TODOS');
-  const [ordem, setOrdem] = useState<{ chave: string; desc: boolean } | null>(null);
+  useEffect(() => onFiltro?.(filtro), [filtro]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Abre ordenada pelas medidas (maiores primeiro): objetos iguais ficam lado a lado
+  const [ordem, setOrdem] = useState<{ chave: string; desc: boolean } | null>({ chave: 'medidas', desc: true });
   const candidatos = useMemo(
     () =>
       objetos
@@ -77,6 +100,9 @@ export const RevisaoImportacao: React.FC<Props> = ({ importacaoId, objetos, marc
   const filtrados = candidatos.filter((o) => filtro === 'TODOS' || o.classificacao === filtro);
   const coluna = COLUNAS.find((c) => c.chave === ordem?.chave);
   const visiveis = coluna ? [...filtrados].sort((a, b) => comparar(coluna.valor(a), coluna.valor(b)) * (ordem!.desc ? -1 : 1) || a.id - b.id) : filtrados;
+  const corDe = useMemo(() => coresPorMedida(objetos), [objetos]);
+  // Painel de edição: os marcados; sem marcados, a linha clicada (ex.: a peça agrupada, para dar tipo, chapa, fita…)
+  const emEdicao = marcados.size ? [...marcados] : candidatos.some((o) => o.id === selecionado) ? [selecionado!] : [];
   // Clique no cabeçalho: crescente, decrescente e volta à ordem padrão (a classificar e baixa confiança primeiro)
   const ordenar = (chave: string) => setOrdem((o) => (o?.chave !== chave ? { chave, desc: false } : !o.desc ? { chave, desc: true } : null));
   const todosMarcados = visiveis.length > 0 && visiveis.every((o) => marcados.has(o.id));
@@ -118,7 +144,8 @@ export const RevisaoImportacao: React.FC<Props> = ({ importacaoId, objetos, marc
         <table className="w-full text-xs">
           <thead className="sticky top-0 bg-stone-50 dark:bg-stone-950 text-stone-500 text-left z-[1]">
             <tr>
-              <th className="py-2 pl-3 w-8">
+              <th className="py-2 pl-3 w-8 whitespace-nowrap">
+                <span className="inline-block w-2.5 mr-1.5" />
                 <input
                   type="checkbox"
                   checked={todosMarcados}
@@ -144,16 +171,22 @@ export const RevisaoImportacao: React.FC<Props> = ({ importacaoId, objetos, marc
           <tbody>
             {visiveis.map((o) => {
               const sel = selecionado === o.id;
+              const juntados = sel ? juntadosEm(o, objetos) : [];
               return (
+                <React.Fragment key={o.id}>
                 <tr
-                  key={o.id}
                   data-objeto={o.id}
                   onClick={() => onSelecionar(sel ? null : o.id)}
                   className={`cursor-pointer border-b border-stone-100 dark:border-stone-800 ${
                     sel ? 'bg-amber-50 dark:bg-amber-950/30' : marcados.has(o.id) ? 'bg-blue-50/60 dark:bg-blue-950/20' : 'hover:bg-stone-50 dark:hover:bg-stone-800/50'
                   }`}
                 >
-                  <td className="py-1.5 pl-3" onClick={(e) => e.stopPropagation()}>
+                  <td className="py-1.5 pl-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                    <span
+                      className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle"
+                      style={{ backgroundColor: corDe.get(o.id) ?? 'transparent' }}
+                      title={corDe.has(o.id) ? 'Mesma cor = mesma medida (C × L × E)' : undefined}
+                    />
                     <input type="checkbox" checked={marcados.has(o.id)} onChange={() => alternar(o.id)} />
                   </td>
                   <td className="py-1.5 px-2 max-w-[220px]">
@@ -162,15 +195,6 @@ export const RevisaoImportacao: React.FC<Props> = ({ importacaoId, objetos, marc
                       {Number(o.revisado) === 1 && <Check className="w-3 h-3 inline ml-1 text-emerald-600" />}
                     </div>
                     <div className="truncate text-[10px] text-stone-400" title={o.material_dae ?? ''}>{o.material_dae}</div>
-                    {sel &&
-                      (() => {
-                        const j = juntadosEm(o, objetos);
-                        return j.length > 0 && (
-                          <div className="mt-1 text-[10px] text-amber-700 dark:text-amber-400 whitespace-normal">
-                            Juntou mais {j.length}: {j.map((x) => `${nomeDe(x)} (${x.quantidade})`).join(', ')}
-                          </div>
-                        );
-                      })()}
                   </td>
                   <td className="py-1.5 px-2 whitespace-nowrap">
                     <span className={`inline-flex text-[10px] font-semibold px-2 py-0.5 rounded-full border ${STATUS_COLORS[o.classificacao] ?? ''}`}>{ROTULO_CLASSE[o.classificacao] ?? o.classificacao}</span>
@@ -185,8 +209,32 @@ export const RevisaoImportacao: React.FC<Props> = ({ importacaoId, objetos, marc
                     {detalheDe(o)}
                   </td>
                   <td className="py-1.5 px-2 text-right">{o.quantidade}</td>
-                  <td className="py-1.5 px-2 text-right whitespace-nowrap font-mono">{o.comprimento_mm != null && `${mm(o.comprimento_mm)} × ${mm(o.largura_mm)} × ${mm(o.espessura_mm)}`}</td>
+                  <td className="py-1.5 px-2 text-right whitespace-nowrap font-mono">
+                    {o.comprimento_mm != null && (
+                      <span className="px-1.5 py-0.5 rounded" style={corDe.has(o.id) ? { backgroundColor: `${corDe.get(o.id)}40` } : undefined}>{`${mm(o.comprimento_mm)} × ${mm(o.largura_mm)} × ${mm(o.espessura_mm)}`}</span>
+                    )}
+                  </td>
                 </tr>
+                {/* Peça agrupada clicada: os objetos somados nela, logo abaixo */}
+                {(juntados.length
+                  ? [
+                      // A própria peça também é um dos objetos agrupados: nome original (do caminho) e a quantidade dela
+                      { ...o, nome: o.caminho.split('/').pop() ?? o.nome, nome_definicao: null, quantidade: o.quantidade - juntados.reduce((s, x) => s + Number(x.quantidade), 0) },
+                      ...juntados,
+                    ]
+                  : []
+                ).map((x) => (
+                  <tr key={x.id} className="bg-amber-50/50 dark:bg-amber-950/15 border-b border-stone-100 dark:border-stone-800 text-stone-500">
+                    <td />
+                    <td className="py-1 px-2 pl-5 max-w-[220px] truncate" title={x.caminho}>↳ {nomeDe(x)}</td>
+                    <td className="py-1 px-2 text-[10px]">agrupado</td>
+                    <td />
+                    <td className="py-1 px-2 truncate text-[10px]">{x.material_dae}</td>
+                    <td className="py-1 px-2 text-right">{x.quantidade}</td>
+                    <td className="py-1 px-2 text-right whitespace-nowrap font-mono">{x.comprimento_mm != null && `${mm(x.comprimento_mm)} × ${mm(x.largura_mm)} × ${mm(x.espessura_mm)}`}</td>
+                  </tr>
+                ))}
+                </React.Fragment>
               );
             })}
             {!visiveis.length && (
@@ -198,11 +246,12 @@ export const RevisaoImportacao: React.FC<Props> = ({ importacaoId, objetos, marc
         </table>
       </div>
 
-      {marcados.size > 0 && (
+      {emEdicao.length > 0 && (
         <EdicaoEmMassa
+          key={emEdicao.join(',')}
           importacaoId={importacaoId}
           objetos={objetos}
-          ids={[...marcados]}
+          ids={emEdicao}
           temArquiteto={temArquiteto}
           onGravado={(msg) => {
             onMarcar(new Set());
@@ -225,7 +274,13 @@ const EdicaoEmMassa: React.FC<{ importacaoId: number; objetos: ObjetoImportacao[
   onGravado,
 }) => {
   const [opcoes, setOpcoes] = useState<Opcoes | null>(null);
-  const [v, setV] = useState<Record<string, string>>({});
+  // Um objeto só: os campos abrem com os valores atuais dele; vários: vazios ("não alterar")
+  const [v, setV] = useState<Record<string, string>>(() => {
+    const o = ids.length === 1 ? objetos.find((x) => x.id === ids[0]) : undefined;
+    if (!o) return {};
+    const k = ['classificacao', 'tipo_peca_id', 'materia_prima_id', 'fita_borda_id', 'material_id', 'insumo_id', 'quantidade', 'comprimento_mm', 'largura_mm', 'espessura_mm'] as const;
+    return Object.fromEntries(k.filter((c) => o[c] != null && o[c] !== '').map((c) => [c, String(o[c])]));
+  });
   const [lembrar, setLembrar] = useState(false);
   const [regra, setRegra] = useState<LembrarRegra>({ origem: 'COMPONENTE', padrao: '', escopo: 'GLOBAL' });
   const [salvando, setSalvando] = useState(false);
@@ -278,7 +333,7 @@ const EdicaoEmMassa: React.FC<{ importacaoId: number; objetos: ObjetoImportacao[
     setErro(null);
     try {
       const r = await salvarRevisao(importacaoId, ids, campos, lembrar ? regra : undefined);
-      setV({});
+      // Um objeto: os campos continuam com o que acabou de ser gravado
       setLembrar(false);
       onGravado(`${ids.length} ${ids.length === 1 ? 'objeto revisado' : 'objetos revisados'}${r.mapeamentoId ? `; regra nº ${r.mapeamentoId} criada` : ''}.`);
     } catch (e: any) {
@@ -289,13 +344,12 @@ const EdicaoEmMassa: React.FC<{ importacaoId: number; objetos: ObjetoImportacao[
   };
 
   // Vira peça com a sugestão gravada (ou o que foi escolhido acima); sem chapa não dá para cortar
-  // Numa peça já juntada só entram objetos "A classificar" (o servidor confere de novo)
+  // Entram só objetos "A classificar" e no máximo uma peça já existente (o servidor confere de novo)
   const abrirJuntar = () => {
-    const marcadosObj = objetos.filter((o) => ids.includes(o.id));
-    const juncoes = marcadosObj.filter((o) => juntadosEm(o, objetos).length);
-    if (juncoes.length > 1) return setErro(`Marque só uma peça já juntada (${juncoes.map(nomeDe).join(', ')}).`);
-    const fora = juncoes.length ? marcadosObj.filter((o) => o !== juncoes[0] && o.classificacao !== 'DESCONHECIDO') : [];
-    if (fora.length) return setErro(`Numa peça já juntada só entram objetos que estão em "A classificar". Desmarque: ${fora.map(nomeDe).join(', ')}.`);
+    const fora = objetos.filter((o) => ids.includes(o.id) && o.classificacao !== 'DESCONHECIDO');
+    const invalidos = fora.filter((o) => o.classificacao !== 'PECA');
+    if (invalidos.length) return setErro(`Só dá para agrupar objetos que estão em "A classificar". Desmarque: ${invalidos.map(nomeDe).join(', ')}.`);
+    if (fora.length > 1) return setErro(`Marque no máximo uma peça já existente (${fora.map(nomeDe).join(', ')}).`);
     setErro(null);
     setJuntando(nomeDe(principal) ?? '');
   };
@@ -306,10 +360,62 @@ const EdicaoEmMassa: React.FC<{ importacaoId: number; objetos: ObjetoImportacao[
     aplicar({ classificacao: 'PECA' });
   };
 
+  // Vários marcados: só "Agrupar para Peça" (vira uma peça confirmada; os demais vão para Ignorar)
+  if (ids.length > 1) {
+    return (
+      <div className="border-t-2 border-blue-500 bg-stone-50 dark:bg-stone-950/60 p-3 space-y-3">
+        {erro && <AvisoErro mensagem={erro} onFechar={() => setErro(null)} />}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="text-xs">
+            <span className="font-semibold">{ids.length} objetos marcados</span>
+            <span className="text-stone-500"> · quantidade total {somaQtd}</span>
+          </div>
+          <button
+            type="button"
+            onClick={abrirJuntar}
+            title="Os marcados viram uma peça só, com a soma das quantidades; a peça vai para Peça e os demais para Ignorar"
+            className="ml-auto flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer"
+          >
+            <Combine className="w-3.5 h-3.5" />
+            Agrupar para Peça
+          </button>
+        </div>
+
+        {juntando !== null && (
+          <ConfirmDialog
+            titulo="Agrupar para Peça"
+            mensagem={
+              <>
+                Os {ids.length} objetos marcados viram uma peça só, com quantidade {somaQtd}
+                {juntadosEm(principal, objetos).length ? ` ("${nomeDe(principal)}" já é uma junção e recebe os demais)` : ''}. A peça vai para a aba
+                "Peça" e os outros objetos para "Ignorar" (continuam visíveis no 3D).
+                {!principal?.materia_prima_id && ' Sem chapa sugerida: escolha a chapa depois, na aba "Peça".'}
+              </>
+            }
+            confirmar="Agrupar"
+            tom="normal"
+            onCancelar={() => setJuntando(null)}
+            onConfirmar={async () => {
+              if (!juntando.trim()) throw new Error('Informe o nome da peça.');
+              const r = await juntarObjetos(importacaoId, ids, juntando, true);
+              setJuntando(null);
+              onGravado(`${ids.length} objetos agrupados na peça "${juntando.trim()}" (quantidade ${r.quantidade}).`);
+            }}
+          >
+            <div className={FIELD_CLASS}>
+              <label className={LABEL_CLASS}>Nome da peça</label>
+              <input value={juntando} onChange={(e) => setJuntando(e.target.value)} onFocus={(e) => e.target.select()} autoFocus required maxLength={255} className={`${INPUT_CLASS} w-full`} />
+            </div>
+          </ConfirmDialog>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="border-t-2 border-blue-500 bg-stone-50 dark:bg-stone-950/60 p-3 space-y-3 max-h-[55%] overflow-y-auto">
       <div className="text-xs font-semibold">
-        Editar {ids.length} {ids.length === 1 ? 'objeto marcado' : 'objetos marcados'} <span className="font-normal text-stone-500">· campo vazio não muda</span>
+        {ids.length === 1 ? `Editar "${nomeDe(primeiro)}"` : `Editar ${ids.length} objetos marcados`} <span className="font-normal text-stone-500">· campo vazio não muda</span>
       </div>
       {erro && <AvisoErro mensagem={erro} onFechar={() => setErro(null)} />}
       {!opcoes ? (
@@ -325,7 +431,7 @@ const EdicaoEmMassa: React.FC<{ importacaoId: number; objetos: ObjetoImportacao[
               ))}
             </select>
           </div>
-          {(!classe || classe === 'PECA') && (
+          {(!classe || classe === 'PECA' || classe === 'DESCONHECIDO') && (
             <>
               {campo('Tipo de peça', 'tipo_peca_id', opcoes.tipos)}
               {campo('Chapa', 'materia_prima_id', opcoes.chapas)}
@@ -334,14 +440,15 @@ const EdicaoEmMassa: React.FC<{ importacaoId: number; objetos: ObjetoImportacao[
           )}
           {(!classe || classe === 'FERRAGEM') && campo('Ferragem', 'material_id', opcoes.ferragens)}
           {(!classe || classe === 'INSUMO') && campo('Insumo', 'insumo_id', opcoes.insumos)}
-          {moveis.length > 1 && campo('Mover para o móvel', 'parent_id', moveis)}
+          {moveis.length > 1 && !juntadosEm(primeiro, objetos).length && campo('Mover para o móvel', 'parent_id', moveis)}
           {numero('Quantidade', 'quantidade', 0)}
           {ids.length === 1 && (
-            <>
+            // Medidas sempre juntas, numa linha própria
+            <div className="col-span-full grid grid-cols-3 gap-3">
               {numero('Comprimento (mm)', 'comprimento_mm', 2)}
               {numero('Largura (mm)', 'largura_mm', 2)}
               {numero('Espessura (mm)', 'espessura_mm', 2)}
-            </>
+            </div>
           )}
         </div>
       )}
@@ -385,17 +492,6 @@ const EdicaoEmMassa: React.FC<{ importacaoId: number; objetos: ObjetoImportacao[
           <Check className="w-3.5 h-3.5" />
           Confirmar como peça
         </button>
-        {ids.length > 1 && (
-          <button
-            type="button"
-            onClick={abrirJuntar}
-            title="Vira um objeto só, com a soma das quantidades: fica a peça que já é junção (ou o primeiro marcado); os demais passam a Ignorar"
-            className="flex items-center gap-1.5 border border-stone-300 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer"
-          >
-            <Combine className="w-3.5 h-3.5" />
-            Juntar em um objeto
-          </button>
-        )}
         <button
           type="button"
           onClick={() => aplicar()}
@@ -409,27 +505,6 @@ const EdicaoEmMassa: React.FC<{ importacaoId: number; objetos: ObjetoImportacao[
       <p className="text-[11px] text-stone-500">
         A regra é criada a partir do primeiro objeto marcado ({primeiro?.nome}), já com a correção aplicada; a importação seguinte casa pelo texto exato.
       </p>
-
-      {juntando !== null && (
-        <ConfirmDialog
-          titulo="Juntar em um objeto"
-          mensagem={`Os ${ids.length} objetos marcados viram um só, com quantidade ${somaQtd}. ${juntadosEm(principal, objetos).length ? `"${nomeDe(principal)}" já é uma junção e recebe os demais` : `O primeiro marcado (${nomeDe(principal)}) fica com o nome abaixo`}; os outros passam a "Ignorar" e continuam visíveis no 3D.`}
-          confirmar="Juntar"
-          tom="normal"
-          onCancelar={() => setJuntando(null)}
-          onConfirmar={async () => {
-            if (!juntando.trim()) throw new Error('Informe o nome do objeto.');
-            const r = await juntarObjetos(importacaoId, ids, juntando);
-            setJuntando(null);
-            onGravado(`${ids.length} objetos juntados em "${juntando.trim()}" (quantidade ${r.quantidade}).`);
-          }}
-        >
-          <div className={FIELD_CLASS}>
-            <label className={LABEL_CLASS}>Nome do objeto</label>
-            <input value={juntando} onChange={(e) => setJuntando(e.target.value)} onFocus={(e) => e.target.select()} autoFocus required maxLength={255} className={`${INPUT_CLASS} w-full`} />
-          </div>
-        </ConfirmDialog>
-      )}
     </div>
   );
 };

@@ -1,5 +1,15 @@
 # Histórico de versões
 
+## 0.0.10 — 05/10/2026
+
+Revisão da importação:
+
+- Lista já abre ordenada pelas medidas (maiores primeiro); medidas repetidas ganham uma cor, mostrada na bolinha do começo da linha, no selo das medidas e no desenho 3D.
+- Com vários objetos marcados, só "Agrupar para Peça": vira uma peça confirmada com a soma das quantidades (vai para "Peça"; os demais para "Ignorar"). Entram objetos "A classificar" e no máximo uma peça já existente.
+- Clicar numa peça agrupada mostra embaixo dela todos os objetos agrupados (inclusive o que virou a peça) e destaca todos no 3D.
+- Clicar numa linha abre o painel de atributos dela com os valores atuais (classificação, tipo, chapa, fita, quantidade e medidas na mesma linha); peça agrupada não tem "Mover para o móvel". Objetos "A classificar" também mostram tipo, chapa e fita.
+- Na aba "A classificar", o 3D esconde o que já foi classificado.
+
 ## 0.0.9 — 05/10/2026
 
 - Revisão da importação: botão "Reiniciar" volta tudo ao estado da importação (classificações, peças confirmadas, junções e edições) e apaga do orçamento os móveis, peças e itens gerados por ela. As regras de "Lembrar esta regra" continuam.

@@ -5,7 +5,7 @@ import { RegistroCrud } from '../types';
 import { STATUS_COLORS, formatDateTimeBR } from '../utils/formatters';
 import { AvisoErro } from './AvisoErro';
 import { Visualizador3D } from './Visualizador3D';
-import { RevisaoImportacao, ROTULO_CLASSE, juntadosEm } from './RevisaoImportacao';
+import { RevisaoImportacao, ROTULO_CLASSE, coresPorMedida, juntadosEm } from './RevisaoImportacao';
 import { GerarOrcamento } from './GerarOrcamento';
 import { ConfirmDialog } from './ConfirmDialog';
 
@@ -66,6 +66,8 @@ export const ImportacaoView: React.FC<{ registro: RegistroCrud; onFechar: () => 
     }
     return m;
   }, [objetos]);
+  // Medidas repetidas com a mesma cor da lista da revisão
+  const cores = useMemo(() => coresPorMedida(objetos ?? []), [objetos]);
   const porId = useMemo(() => new Map((objetos ?? []).map((o) => [o.id, o])), [objetos]);
 
   /** Escolher um móvel/grupo destaca todas as peças dentro dele */
@@ -84,6 +86,18 @@ export const ImportacaoView: React.FC<{ registro: RegistroCrud; onFechar: () => 
     for (const m of marcados) s.add(m);
     return s;
   }, [selecionado, filhos, marcados, porId, objetos]);
+
+  // Na aba "A classificar", o 3D mostra só o que falta classificar (o que estiver destacado continua visível)
+  const [filtroRevisao, setFiltroRevisao] = useState('TODOS');
+  const ocultos = useMemo(
+    () =>
+      new Set(
+        aba === 'revisao' && filtroRevisao === 'DESCONHECIDO'
+          ? (objetos ?? []).filter((o) => !['DESCONHECIDO', 'MOVEL', 'GRUPO'].includes(o.classificacao) && !destacados.has(o.id)).map((o) => o.id)
+          : [],
+      ),
+    [aba, filtroRevisao, objetos, destacados],
+  );
 
   // Peça escolhida no 3D: abre os grupos acima dela e rola a árvore até a linha
   const arvore = useRef<HTMLDivElement>(null);
@@ -311,6 +325,7 @@ export const ImportacaoView: React.FC<{ registro: RegistroCrud; onFechar: () => 
                 selecionado={selecionado}
                 onSelecionar={selecionar}
                 temArquiteto={temArquiteto}
+                onFiltro={setFiltroRevisao}
                 onGravado={(msg) => {
                   onToast(msg);
                   recarregar();
@@ -344,7 +359,7 @@ export const ImportacaoView: React.FC<{ registro: RegistroCrud; onFechar: () => 
         </div>
         <div className="min-h-[300px]">
           {malha ? (
-            <Visualizador3D malha={malha} destacados={destacados} onSelecionar={selecionar} />
+            <Visualizador3D malha={malha} destacados={destacados} onSelecionar={selecionar} cores={cores} ocultos={ocultos} />
           ) : (
             imp.status !== 'ERRO' && (
               <div className="h-full flex items-center justify-center text-stone-500 text-sm">

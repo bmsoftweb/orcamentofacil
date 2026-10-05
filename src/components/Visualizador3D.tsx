@@ -9,6 +9,10 @@ interface Props {
   /** Objetos destacados (a peça escolhida, ou todas as peças do móvel/grupo escolhido) */
   destacados: Set<number>;
   onSelecionar: (objetoId: number | null) => void;
+  /** Cor por objeto (ex.: medidas repetidas na revisão); sem cor, vale a do material */
+  cores?: Map<number, string>;
+  /** Objetos escondidos no desenho (ex.: já classificados, na aba "A classificar"); não recebem clique */
+  ocultos?: Set<number>;
 }
 
 const COR_PADRAO = '#d6cfc4';
@@ -26,7 +30,7 @@ function decodificar(b64: string): Float32Array {
  * Visualizador 3D da importação: as peças vêm da malha gravada pelo parser (uma por instância),
  * então clicar numa peça devolve o id do objeto no banco e o destaque é exato.
  */
-export const Visualizador3D: React.FC<Props> = ({ malha, destacados, onSelecionar }) => {
+export const Visualizador3D: React.FC<Props> = ({ malha, destacados, onSelecionar, cores, ocultos }) => {
   const caixa = useRef<HTMLDivElement>(null);
   const estado = useRef<{ malhas: THREE.Mesh[]; enquadrar: (alvo?: THREE.Object3D[]) => void } | null>(null);
   const aoSelecionar = useRef(onSelecionar);
@@ -107,7 +111,7 @@ export const Visualizador3D: React.FC<Props> = ({ malha, destacados, onSeleciona
       if (!inicio || Math.hypot(e.clientX - inicio.x, e.clientY - inicio.y) > 4) return;
       const r = renderer.domElement.getBoundingClientRect();
       raio.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
-      const hit = raio.intersectObjects(malhas, false)[0];
+      const hit = raio.intersectObjects(malhas.filter((m) => m.visible), false)[0];
       aoSelecionar.current(hit ? (hit.object.userData.objeto as number) : null);
     };
     renderer.domElement.addEventListener('pointerdown', baixar);
@@ -144,12 +148,16 @@ export const Visualizador3D: React.FC<Props> = ({ malha, destacados, onSeleciona
     for (const m of s.malhas) {
       const mat = m.material as THREE.MeshStandardMaterial;
       const sel = destacados.has(m.userData.objeto);
-      mat.color.copy(sel ? COR_DESTAQUE : m.userData.cor);
+      m.visible = !ocultos?.has(m.userData.objeto);
+      const cor = cores?.get(m.userData.objeto);
+      if (sel) mat.color.copy(COR_DESTAQUE);
+      else if (cor) mat.color.set(cor);
+      else mat.color.copy(m.userData.cor);
       mat.transparent = destacados.size > 0 && !sel;
       mat.opacity = mat.transparent ? 0.25 : 1;
       mat.depthWrite = !mat.transparent;
     }
-  }, [destacados, malha]);
+  }, [destacados, malha, cores, ocultos]);
 
   return (
     <div className="relative w-full h-full min-h-[300px]">

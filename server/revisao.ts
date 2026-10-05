@@ -106,19 +106,19 @@ export function createRevisaoRouter() {
         [imp.id],
       );
       const anteriores = somados.filter((s) => !ids.includes(Number(s.id)) && marcados.some((m) => somadoEm(s, m)));
-      const juncoes = marcados.filter((m) => anteriores.some((s) => somadoEm(s, m)));
-      // Numa peça já juntada só entram objetos ainda a classificar
-      if (juncoes.length > 1) throw falha('Marque só uma peça já juntada: as outras peças marcadas também são junções.');
-      if (juncoes.length && marcados.some((m) => m !== juncoes[0] && m.classificacao !== 'DESCONHECIDO')) {
-        throw falha('Numa peça já juntada só entram objetos que estão em "A classificar".');
-      }
-      const principal = Number((juncoes[0] ?? marcados[0]).id);
+      // Entram só objetos "A classificar" e, no máximo, uma peça já existente (que recebe os demais).
+      // Ignorados (inclusive os já somados noutra peça), ferragens e insumos ficam de fora: seriam contados duas vezes
+      const fora = marcados.filter((m) => m.classificacao !== 'DESCONHECIDO');
+      if (fora.some((m) => m.classificacao !== 'PECA')) throw falha('Só dá para agrupar objetos que estão em "A classificar" (e no máximo uma peça já existente).');
+      if (fora.length > 1) throw falha('Marque no máximo uma peça já existente; os demais precisam estar em "A classificar".');
+      const principal = Number((fora[0] ?? marcados.find((m) => anteriores.some((s) => somadoEm(s, m))) ?? marcados[0]).id);
       const total = marcados.reduce((s, o) => s + Number(o.quantidade), 0);
       const ignorar = [...ids.filter((id) => id !== principal), ...anteriores.map((s) => Number(s.id))];
 
       await pool.query(
+        // "Agrupar para Peça" (peca): a principal já vira peça, com a sugestão de tipo, chapa e fita que tiver
         `UPDATE importacao_objetos SET nome = ?, nome_definicao = ?, quantidade = ?, revisado = 1, confianca = 100,
-           motivo_classificacao = ? WHERE id = ?`,
+           motivo_classificacao = ?${req.body?.peca ? ", classificacao = 'PECA'" : ''} WHERE id = ?`,
         [nome, nome, total, `Junção de ${ignorar.length + 1} objetos`, principal],
       );
       await pool.query(
