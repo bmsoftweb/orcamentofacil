@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, FileText, FlipHorizontal2, Loader2, RefreshCw, X } from 'lucide-react';
-import { getRecord, fetchObjetosImportacao, fetchMalhaImportacao, reclassificarImportacao, MalhaImportacao, ObjetoImportacao } from '../services/api';
+import { AlertTriangle, ChevronDown, ChevronRight, FileText, FlipHorizontal2, Loader2, RefreshCw, RotateCcw, X } from 'lucide-react';
+import { getRecord, fetchObjetosImportacao, fetchMalhaImportacao, reclassificarImportacao, reiniciarImportacao, MalhaImportacao, ObjetoImportacao } from '../services/api';
 import { RegistroCrud } from '../types';
 import { STATUS_COLORS, formatDateTimeBR } from '../utils/formatters';
 import { AvisoErro } from './AvisoErro';
 import { Visualizador3D } from './Visualizador3D';
 import { RevisaoImportacao, ROTULO_CLASSE, juntadosEm } from './RevisaoImportacao';
 import { GerarOrcamento } from './GerarOrcamento';
+import { ConfirmDialog } from './ConfirmDialog';
 
 const mm = (v: string | null) => (v == null ? '' : new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(Number(v)));
 const ROTULO = ROTULO_CLASSE;
@@ -25,6 +26,7 @@ export const ImportacaoView: React.FC<{ registro: RegistroCrud; onFechar: () => 
   const [marcados, setMarcados] = useState<Set<number>>(new Set());
   const [gerando, setGerando] = useState(false);
   const [reclassificando, setReclassificando] = useState(false);
+  const [reiniciando, setReiniciando] = useState(false);
   const [temArquiteto, setTemArquiteto] = useState(false);
   const [versao, setVersao] = useState(0);
   const recarregar = () => setVersao((v) => v + 1);
@@ -197,6 +199,14 @@ export const ImportacaoView: React.FC<{ registro: RegistroCrud; onFechar: () => 
           <div className="ml-auto flex items-center gap-2">
             <button
               type="button"
+              onClick={() => setReiniciando(true)}
+              title="Apagar toda a revisão e o que foi gerado no orçamento e começar do zero"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950/30 cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" /> Reiniciar
+            </button>
+            <button
+              type="button"
               disabled={reclassificando}
               onClick={async () => {
                 setReclassificando(true);
@@ -228,6 +238,29 @@ export const ImportacaoView: React.FC<{ registro: RegistroCrud; onFechar: () => 
           <X className="w-4 h-4" />
         </button>
       </div>
+
+      {reiniciando && (
+        <ConfirmDialog
+          titulo="Reiniciar a revisão"
+          mensagem={
+            <>
+              Volta tudo ao estado de recém-importado, como na primeira vez: classificações, peças confirmadas, junções, medidas e quantidades editadas.
+              {imp.orcamento_id ? ' Também apaga do orçamento os móveis, as peças e os itens gerados por esta importação.' : ''} As regras salvas com "Lembrar esta regra" continuam.
+            </>
+          }
+          confirmar="Reiniciar"
+          onCancelar={() => setReiniciando(false)}
+          onConfirmar={async () => {
+            await reiniciarImportacao(id);
+            setReiniciando(false);
+            setSelecionado(null);
+            setMarcados(new Set());
+            setImp((i) => ({ ...i, status: 'REVISAO' }));
+            recarregar();
+            onToast('Revisão reiniciada: tudo voltou ao estado da importação.');
+          }}
+        />
+      )}
 
       {verAvisos && (
         <ul className="px-4 py-2 border-b border-stone-200 dark:border-stone-800 max-h-32 overflow-y-auto text-xs text-amber-800 dark:text-amber-300 bg-amber-50/60 dark:bg-amber-950/20">

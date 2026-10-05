@@ -1,5 +1,9 @@
 # Histórico de versões
 
+## 0.0.9 — 05/10/2026
+
+- Revisão da importação: botão "Reiniciar" volta tudo ao estado da importação (classificações, peças confirmadas, junções e edições) e apaga do orçamento os móveis, peças e itens gerados por ela. As regras de "Lembrar esta regra" continuam.
+
 ## 0.0.8 — 05/10/2026
 
 Revisão da importação:

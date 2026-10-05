@@ -134,6 +134,82 @@ export function createRevisaoRouter() {
     }
   });
 
+  /**
+   * Reiniciar: volta a importação ao estado de recém-importada, lendo o .dae de novo (mesmos objetos, campos originais). Apaga do orçamento os móveis
+   * gerados por ela (com as peças e os itens deles) e o que mais veio dos objetos; desfaz revisões, junções e edições.
+   * Os mapeamentos criados com "Lembrar esta regra" ficam (são cadastros).
+   */
+  router.post('/importacoes/:id/reiniciar', async (req: Request, res: Response) => {
+    const conn = await pool.getConnection();
+    try {
+      const imp = await importacao(req.params.id);
+      if (imp.status === 'ERRO') throw falha('Importação com erro: importe o arquivo de novo.');
+      const orcamentoId = imp.orcamento_id ? Number(imp.orcamento_id) : null;
+      if (orcamentoId) {
+        const [[orc]] = await pool.query<any[]>('SELECT status FROM orcamentos WHERE id = ?', [orcamentoId]);
+        if (orc && !['RASCUNHO', 'EM_REVISAO'].includes(orc.status)) throw falha('Só dá para reiniciar a importação de orçamento em rascunho ou em revisão.', 409);
+      }
+      // Lê e classifica antes de apagar: se o arquivo falhar, nada muda
+      const [[cfg]] = await pool.query<any[]>('SELECT arredondamento_medida_mm FROM configuracoes WHERE id = 1');
+      const r = parseDae(await ler(imp.arquivo_path), { arredondamentoMm: Number(cfg?.arredondamento_medida_mm ?? 1) });
+      const cls = await classificarImportacao(r, await arquitetoDoOrcamento(orcamentoId));
+
+      // Os mesmos objetos (mesmos ids, que a malha do 3D usa), casados com o arquivo como no Reclassificar
+      const [linhas] = await pool.query<any[]>('SELECT id, caminho FROM importacao_objetos WHERE importacao_id = ? ORDER BY nivel, id', [imp.id]);
+      const ordem = [...r.objetos].sort((a, b) => a.nivel - b.nivel || a.idx - b.idx);
+      if (ordem.length !== linhas.length || ordem.some((o, i) => o.caminho.slice(0, 1000) !== linhas[i].caminho)) {
+        throw falha('O arquivo guardado não corresponde mais aos objetos desta importação: importe de novo.');
+      }
+      const idDb: number[] = [];
+      ordem.forEach((o, i) => (idDb[o.idx] = Number(linhas[i].id)));
+      const n2 = (x: number | undefined) => (x === undefined ? null : x.toFixed(2));
+
+      await conn.beginTransaction();
+      const objs = '(SELECT id FROM (SELECT id FROM importacao_objetos WHERE importacao_id = ?) x)';
+      await conn.query(`DELETE FROM orcamento_itens WHERE importacao_objeto_id IN ${objs}`, [imp.id]);
+      await conn.query(`DELETE FROM orcamento_pecas WHERE importacao_objeto_id IN ${objs}`, [imp.id]);
+      // Móveis gerados por esta importação: as peças e os itens deles saem em cascata
+      await conn.query('DELETE FROM orcamento_moveis WHERE importacao_id = ?', [imp.id]);
+      for (const o of ordem) {
+        const c = cls.get(o.idx);
+        await conn.query(
+          `UPDATE importacao_objetos SET parent_id = ?, nome = ?, nome_definicao = ?, quantidade = ?, comprimento_mm = ?, largura_mm = ?,
+             espessura_mm = ?, classificacao = ?, confianca = ?, motivo_classificacao = ?, mapeamento_id = ?, tipo_peca_id = ?,
+             materia_prima_id = ?, fita_borda_id = ?, material_id = ?, insumo_id = ?, revisado = 0 WHERE id = ?`,
+          [
+            o.parent === null ? null : idDb[o.parent],
+            o.nome.slice(0, 255),
+            o.nomeDefinicao?.slice(0, 255) ?? null,
+            o.quantidade,
+            n2(c?.comprimento ?? o.medida?.comprimento),
+            n2(c?.largura ?? o.medida?.largura),
+            n2(o.medida?.espessura),
+            c?.classificacao ?? o.classificacao,
+            c?.confianca ?? null,
+            c?.motivo.slice(0, 255) ?? null,
+            c?.mapeamentoId ?? null,
+            c?.tipoPecaId ?? null,
+            c?.materiaPrimaId ?? null,
+            c?.fitaBordaId ?? null,
+            c?.materialId ?? null,
+            c?.insumoId ?? null,
+            idDb[o.idx],
+          ],
+        );
+      }
+      await conn.query("UPDATE importacoes_dae SET status = 'REVISAO' WHERE id = ?", [imp.id]);
+      await conn.commit();
+      await atualizarTotais(imp.id);
+      const calculo = orcamentoId ? await calcularNoBanco(orcamentoId).catch((e: Error) => ({ erro: e.message })) : null;
+      res.json({ objetos: r.objetos.length, calculo });
+    } catch (err: any) {
+      await conn.rollback().catch(() => {});
+      res.status(err.status || 400).json({ error: err.message });
+    } finally {
+      conn.release();
+    }
+  });
+
   /** Reclassifica com as regras atuais (ex.: depois de criar mapeamentos); objetos já revisados ficam como estão */
   router.post('/importacoes/:id/reclassificar', async (req: Request, res: Response) => {
     try {

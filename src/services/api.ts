@@ -295,7 +295,8 @@ export const salvarRevisao = (id: Id, ids: number[], campos: Record<string, unkn
   enviar('PUT', `/api/importacoes/${id}/objetos`, { ids, campos, lembrar });
 export const juntarObjetos = (id: Id, ids: number[], nome: string): Promise<{ id: number; quantidade: number }> =>
   enviar('POST', `/api/importacoes/${id}/juntar`, { ids, nome });
-export const reclassificarImportacao =(id: Id): Promise<{ reclassificados: number }> => enviar('POST', `/api/importacoes/${id}/reclassificar`);
+export const reiniciarImportacao = (id: Id): Promise<{ objetos: number; calculo: unknown }> => enviar('POST', `/api/importacoes/${id}/reiniciar`);
+export const reclassificarImportacao = (id: Id): Promise<{ reclassificados: number }> => enviar('POST', `/api/importacoes/${id}/reclassificar`);
 
 export interface LinhaDiff {
   caminho: string;
