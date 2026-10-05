@@ -293,7 +293,9 @@ export interface LembrarRegra {
 }
 export const salvarRevisao = (id: Id, ids: number[], campos: Record<string, unknown>, lembrar?: LembrarRegra): Promise<{ success: boolean; mapeamentoId: number | null }> =>
   enviar('PUT', `/api/importacoes/${id}/objetos`, { ids, campos, lembrar });
-export const reclassificarImportacao = (id: Id): Promise<{ reclassificados: number }> => enviar('POST', `/api/importacoes/${id}/reclassificar`);
+export const juntarObjetos = (id: Id, ids: number[], nome: string): Promise<{ id: number; quantidade: number }> =>
+  enviar('POST', `/api/importacoes/${id}/juntar`, { ids, nome });
+export const reclassificarImportacao =(id: Id): Promise<{ reclassificados: number }> => enviar('POST', `/api/importacoes/${id}/reclassificar`);
 
 export interface LinhaDiff {
   caminho: string;

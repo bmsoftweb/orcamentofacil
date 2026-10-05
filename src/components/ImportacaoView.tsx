@@ -5,7 +5,7 @@ import { RegistroCrud } from '../types';
 import { STATUS_COLORS, formatDateTimeBR } from '../utils/formatters';
 import { AvisoErro } from './AvisoErro';
 import { Visualizador3D } from './Visualizador3D';
-import { RevisaoImportacao, ROTULO_CLASSE } from './RevisaoImportacao';
+import { RevisaoImportacao, ROTULO_CLASSE, juntadosEm } from './RevisaoImportacao';
 import { GerarOrcamento } from './GerarOrcamento';
 
 const mm = (v: string | null) => (v == null ? '' : new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(Number(v)));
@@ -73,10 +73,15 @@ export const ImportacaoView: React.FC<{ registro: RegistroCrud; onFechar: () => 
       s.add(oid);
       for (const f of filhos.get(oid) ?? []) juntar(f.id);
     };
-    if (selecionado !== null) juntar(selecionado);
+    if (selecionado !== null) {
+      juntar(selecionado);
+      // Peça de uma junção: destaca também os objetos somados nela
+      const p = porId.get(selecionado);
+      if (p) for (const j of juntadosEm(p, objetos ?? [])) s.add(j.id);
+    }
     for (const m of marcados) s.add(m);
     return s;
-  }, [selecionado, filhos, marcados]);
+  }, [selecionado, filhos, marcados, porId, objetos]);
 
   // Peça escolhida no 3D: abre os grupos acima dela e rola a árvore até a linha
   const arvore = useRef<HTMLDivElement>(null);

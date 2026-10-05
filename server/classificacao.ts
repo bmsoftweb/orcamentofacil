@@ -42,6 +42,12 @@ export async function classificarImportacao(r: ResultadoDae, arquitetoId: number
   const cat = await catalogoClassificador();
   const { resultados, usos } = classificar({ ...cat, objetos: r.objetos, up: vec3.clone(UP[r.meta.eixoUp] as unknown as vec3), arquitetoId });
   for (const [id, n] of usos) await pool.query('UPDATE mapeamentos_dae SET vezes_aplicado = vezes_aplicado + ? WHERE id = ?', [n, id]);
+  // Peça só vira peça quando o usuário confirma na revisão: a classificação fica como sugestão (tipo, chapa, fita, medidas)
+  for (const c of resultados.values()) {
+    if (c.classificacao !== 'PECA') continue;
+    c.classificacao = 'DESCONHECIDO';
+    c.motivo = `Sugestão de peça: ${c.motivo}`;
+  }
   return resultados;
 }
 

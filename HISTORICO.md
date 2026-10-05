@@ -1,5 +1,14 @@
 # Histórico de versões
 
+## 0.0.8 — 05/10/2026
+
+Revisão da importação:
+
+- Nada vira peça sozinho: o que o classificador reconhece como peça entra em "A classificar" com a sugestão de tipo, chapa e fita; o botão "Confirmar como peça" usa a sugestão (ou o escolhido no painel). Saiu o filtro "Baixa confiança".
+- Ordenar a lista clicando no cabeçalho das colunas (crescente, decrescente e volta à ordem padrão; medidas por comprimento, largura e espessura).
+- "Juntar em um objeto": os marcados viram uma peça com nome novo e a soma das quantidades; os demais passam a "Ignorar" ("Somado em …"). Numa peça já juntada entram mais objetos, só os "A classificar".
+- Clicar numa peça juntada destaca no 3D todos os objetos somados nela e lista os nomes abaixo da linha.
+
 ## 0.0.7 — 04/10/2026
 
 - Revisão da importação: com uma peça clicada no 3D, voltou a ser possível trocar de filtro (antes ele voltava sozinho para o filtro da peça).

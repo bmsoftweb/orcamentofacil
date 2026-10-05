@@ -5,6 +5,7 @@ import { arquitetoDoOrcamento } from './importacoes.js';
 import { classificarImportacao, atualizarTotais } from './classificacao.js';
 import { parseDae } from '../src/lib/dae/parser.js';
 import { calcularNoBanco } from './calculo.js';
+import { motivoSomado, somadoEm } from '../src/lib/texto.js';
 
 const falha = (msg: string, status = 400) => Object.assign(new Error(msg), { status });
 const CLASSES = ['PECA', 'FERRAGEM', 'INSUMO', 'IGNORAR', 'DESCONHECIDO'];
@@ -76,6 +77,58 @@ export function createRevisaoRouter() {
       }
       await atualizarTotais(imp.id);
       res.json({ success: true, mapeamentoId });
+    } catch (err: any) {
+      res.status(err.status || 400).json({ error: err.message });
+    }
+  });
+
+  /**
+   * Junta os marcados num objeto só, com a soma das quantidades; os demais viram "Ignorar" (continuam no 3D e na
+   * árvore, mas não entram no orçamento). Se uma das marcadas já é uma junção, ela é a principal e só recebe
+   * objetos "A classificar"; senão, a principal é a primeira marcada. Todos ficam revisados.
+   */
+  router.post('/importacoes/:id/juntar', async (req: Request, res: Response) => {
+    try {
+      const imp = await importacao(req.params.id);
+      const ids: number[] = [...new Set<number>((Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number).filter(Boolean))];
+      const nome = String(req.body?.nome ?? '').trim().slice(0, 255);
+      if (ids.length < 2) throw falha('Marque ao menos dois objetos para juntar.');
+      if (!nome) throw falha('Informe o nome do objeto.');
+      const [objs] = await pool.query<any[]>(
+        "SELECT id, nome, quantidade, classificacao FROM importacao_objetos WHERE importacao_id = ? AND id IN (?) AND classificacao NOT IN ('MOVEL', 'GRUPO')",
+        [imp.id, ids],
+      );
+      if (objs.length !== ids.length) throw falha('Há objetos marcados que não são desta importação ou são móveis/grupos.');
+      const marcados = ids.map((id) => objs.find((o) => Number(o.id) === id)!);
+      // Objetos já somados em alguma das marcadas (de junções anteriores): passam a apontar para a principal
+      const [somados] = await pool.query<any[]>(
+        "SELECT id, classificacao, motivo_classificacao FROM importacao_objetos WHERE importacao_id = ? AND classificacao = 'IGNORAR' AND motivo_classificacao LIKE 'Somado em %'",
+        [imp.id],
+      );
+      const anteriores = somados.filter((s) => !ids.includes(Number(s.id)) && marcados.some((m) => somadoEm(s, m)));
+      const juncoes = marcados.filter((m) => anteriores.some((s) => somadoEm(s, m)));
+      // Numa peça já juntada só entram objetos ainda a classificar
+      if (juncoes.length > 1) throw falha('Marque só uma peça já juntada: as outras peças marcadas também são junções.');
+      if (juncoes.length && marcados.some((m) => m !== juncoes[0] && m.classificacao !== 'DESCONHECIDO')) {
+        throw falha('Numa peça já juntada só entram objetos que estão em "A classificar".');
+      }
+      const principal = Number((juncoes[0] ?? marcados[0]).id);
+      const total = marcados.reduce((s, o) => s + Number(o.quantidade), 0);
+      const ignorar = [...ids.filter((id) => id !== principal), ...anteriores.map((s) => Number(s.id))];
+
+      await pool.query(
+        `UPDATE importacao_objetos SET nome = ?, nome_definicao = ?, quantidade = ?, revisado = 1, confianca = 100,
+           motivo_classificacao = ? WHERE id = ?`,
+        [nome, nome, total, `Junção de ${ignorar.length + 1} objetos`, principal],
+      );
+      await pool.query(
+        `UPDATE importacao_objetos SET classificacao = 'IGNORAR', revisado = 1, confianca = 100, motivo_classificacao = ?
+          WHERE importacao_id = ? AND id IN (?)`,
+        // O "(nº id)" no fim liga o objeto à peça principal (a tela usa para mostrar os objetos juntados)
+        [motivoSomado(nome, principal), imp.id, ignorar],
+      );
+      await atualizarTotais(imp.id);
+      res.json({ id: principal, quantidade: total });
     } catch (err: any) {
       res.status(err.status || 400).json({ error: err.message });
     }
